@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta http-equiv="X-UA-Compatible" content="IE=edge">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Ping</title>
+	<style>
+		body {
+			background-color: black;
+			color: white;
+		}
+		p {
+			margin: 0.2rem 0;
+		}
+		.controls {
+			display: flex;
+		}
+		.controls input {
+			flex: 1;
+		}
+		
+	</style>
+</head>
+<body>
+	<div class="controls">
+		<p>Min ping interval:</p>
+		<input type="range" min="1" max="200" value="50" id="InMinPingInterval">
+	</div>
+	<p id="OutMinPingInterval"></p>
+	<div class="controls">
+		<p>Timeout:</p>
+		<input type="range" min="1" max="200" value="150" id="InMaxPingInterval">
+	</div>
+	<p id="OutMaxPingInterval"></p>
+	<div class="controls">
+		<p>Max age:</p>
+		<input type="range" min="5" max="60" value="30" id="InMaxPingAge">
+	</div>
+	<p id="OutMaxPingAge"></p>
+	<canvas id="pingCanvas"></canvas>
+	<p id="avgping">Avg. ping: </p>
+	<p>Source file:</p>
+	<select id="InDownFile">
+		<option value="1">1 (small)</option>
+		<option value="2">2 (big)</option>
+	</select>
+	<div class="controls">
+		<p>Min download interval:</p>
+		<input type="range" min="1" max="100" value="40" id="InMinDownInterval">
+	</div>
+	<p id="OutMinDownInterval"></p>
+	<div class="controls">
+		<p>Timeout:</p>
+		<input type="range" min="1" max="100" value="74" id="InMaxDownInterval">
+	</div>
+	<p id="OutMaxDownInterval"></p>
+	<div class="controls">
+		<p>Max age:</p>
+		<input type="range" min="10" max="120" value="60" id="InMaxDownAge">
+	</div>
+	<p id="OutMaxDownAge"></p>
+	<canvas id="downCanvas"></canvas>
+	<p id="avgdown">Avg. download speed: </p>
+</body>
+<script>
+	let minPingInterval_ms;
+	let maxPingInterval_ms;
+	let maxPingAge_ms;
+
+	let minDownInterval_ms;
+	let maxDownInterval_ms;
+	let maxDownAge_ms;
+	let maxDown = 10;
+	
+	function cubicPing(x) {
+		return 81973 / 87173940 * x ** 3 + 209159 / 29057980 * x ** 2 + 91527455 / 8717394 * x + 130023500 / 1452899;
+	}
+
+	function cubicDown(x) {
+		return 54500 / 4791501 * x ** 3 + 8572600 / 4791501 * x ** 2 + 25953100 / 4791501 * x + 923720000 / 4791501;
+	}
+	
+	function updatePingInterval() {
+		const min = parseInt(document.getElementById('InMinPingInterval').value);
+		const max = parseInt(document.getElementById('InMaxPingInterval').value);
+		const maxage = parseInt(document.getElementById('InMaxPingAge').value);
+		minPingInterval_ms = cubicPing(min);
+		maxPingInterval_ms = cubicPing(max);
+		maxPingAge_ms = maxage * 1000;
+		document.getElementById('OutMinPingInterval').innerText = minPingInterval_ms.toFixed(0) + ' ms';
+		document.getElementById('OutMaxPingInterval').innerText = maxPingInterval_ms.toFixed(0) + ' ms';
+		document.getElementById('OutMaxPingAge').innerText = `Graph shows last ${(maxPingAge_ms / 1000).toFixed(0)} seconds`;
+	}
+	document.getElementById('InMinPingInterval').oninput = updatePingInterval;
+	document.getElementById('InMaxPingInterval').oninput = updatePingInterval;
+	document.getElementById('InMaxPingAge').oninput = updatePingInterval;
+	updatePingInterval();
+
+	function updateDownInterval() {
+		const min = parseInt(document.getElementById('InMinDownInterval').value);
+		const max = parseInt(document.getElementById('InMaxDownInterval').value);
+		const maxage = parseInt(document.getElementById('InMaxDownAge').value);
+		minDownInterval_ms = cubicDown(min);
+		maxDownInterval_ms = cubicDown(max);
+		maxDownAge_ms = maxage * 1000;
+		document.getElementById('OutMinDownInterval').innerText = minDownInterval_ms.toFixed(0) + ' ms';
+		document.getElementById('OutMaxDownInterval').innerText = maxDownInterval_ms.toFixed(0) + ' ms';
+		document.getElementById('OutMaxDownAge').innerText = `Graph shows last ${(maxDownAge_ms / 1000).toFixed(0)} seconds`;
+	}
+	document.getElementById('InMinDownInterval').oninput = updateDownInterval;
+	document.getElementById('InMaxDownInterval').oninput = updateDownInterval;
+	document.getElementById('InMaxDownAge').oninput = updateDownInterval;
+	updateDownInterval();
+
+	const receivedPongs = [];
+	async function ping() {
+		const startTime = Date.now();
+		receivedPongs.push([startTime]);
+		const ok = await fetch('/ping', { signal: AbortSignal.timeout(maxPingInterval_ms) }).then(res => res.ok).catch(err => false);
+		const endTime = Date.now();
+		for (let i = receivedPongs.length - 1; i >= 0; i--) {
+			if (receivedPongs[i][0] === startTime) {
+				receivedPongs[i].push(endTime, ok);
+				break;
+			}
+		}
+		const pings_ms = receivedPongs.slice(-5).map(x => x[1] - x[0]);
+		document.getElementById('avgping').innerText = `Avg. ping: ${(pings_ms.reduce((a, b) => a + b, 0) / pings_ms.length).toFixed(0) } ms`;
+		while (receivedPongs[0][1] < endTime - maxPingAge_ms) receivedPongs.shift();
+		await Promise.resolve();
+		setTimeout(ping, minPingInterval_ms + startTime - endTime);
+	}
+	ping();
+
+	function downloadspeed(arr) {
+		if (arr[2] <= 0) return 0;
+		return 0.008 * arr[2] / (arr[1] - arr[0]);
+	}
+
+	const downloads = [];
+	async function download() {
+		const startTime = Date.now();
+		downloads.push([startTime]);
+		const size = await fetch('/download' + document.getElementById('InDownFile').value, { signal: AbortSignal.timeout(maxDownInterval_ms), cache: 'no-store' }).then(async res => (await res.blob()).size).catch(err => -1);
+		const endTime = Date.now();
+		for (let i = downloads.length - 1; i >= 0; i--) {
+			if (downloads[i][0] === startTime) {
+				downloads[i].push(endTime, size);
+				break;
+			}
+		}
+		const downs_ms = downloads.slice(-5).map(downloadspeed);
+		document.getElementById('avgdown').innerText = `Avg. download speed: ${(downs_ms.reduce((a, b) => a + b, 0) / downs_ms.length).toFixed(2)} Mb/s`;
+		while (downloads[0][1] < endTime - maxDownAge_ms - maxDownInterval_ms) downloads.shift();
+		// calculating graph top
+		const maxspeed = Math.max(...downloads.map(downloadspeed));
+		if (maxspeed === 0) {
+			maxDown = 10;
+		} else {
+			console.log('highest', maxspeed);
+			const weightclass = Math.floor(Math.log10(maxspeed));
+			console.log('weightclass', weightclass);
+			// 1, 2, 5, 10
+			// * 10 ** weightclass
+			// which one is greater than maxspeed by the smallest amount?
+			// compare speeds first digit to 1, 2, 5
+			// speeds first digit:
+			const firstdigit = Math.floor(maxspeed * 10 ** -weightclass);
+			console.log('firstdigit', firstdigit);
+			if (firstdigit < 1) {
+				maxDown = 10 ** weightclass;
+			} else if (firstdigit < 2) {
+				maxDown = 2 * 10 ** weightclass;
+			} else if (firstdigit < 5) {
+				maxDown = 5 * 10 ** weightclass;
+			} else {
+				maxDown = 10 ** (weightclass + 1);
+			}
+		}
+		console.log('maxDown', maxDown);
+
+		await Promise.resolve();
+		setTimeout(download, minDownInterval_ms + startTime - endTime);
+	}
+	download();
+
+	const pingCanvas = document.getElementById('pingCanvas');
+	pingCanvas.width = document.body.clientWidth;
+	pingCanvas.height = 40;
+	window.onresize = () => pingCanvas.width = document.body.clientWidth;
+	const pingCtx = pingCanvas.getContext('2d');
+	pingCtx.strokeStyle = 'white';
+
+	const downCanvas = document.getElementById('downCanvas');
+	downCanvas.width = document.body.clientWidth;
+	downCanvas.height = 150;
+	window.onresize = () => downCanvas.width = document.body.clientWidth;
+	const downCtx = downCanvas.getContext('2d');
+
+	function timeToPingPx(timestamp) {
+		const end = Date.now();
+		const beginning = end - maxPingAge_ms;
+		return (timestamp - beginning) / (maxPingAge_ms) * pingCanvas.width;
+	}
+	function timeToDownPx(timestamp) {
+		const end = Date.now();
+		const beginning = end - maxDownAge_ms;
+		return (timestamp - beginning) / (maxDownAge_ms) * downCanvas.width;
+	}
+	function draw() {
+		pingCtx.clearRect(0, 0, pingCanvas.width, pingCanvas.height)
+		receivedPongs.forEach(pong => {
+			if (pong[2]) pingCtx.fillStyle = '#33ff00'; else pingCtx.fillStyle = '#ff0033';
+			pingCtx.fillRect(timeToPingPx(pong[0]), 0, Math.max(timeToPingPx(pong[1]) - timeToPingPx(pong[0]), 1), pingCanvas.height);
+		});
+
+		downCtx.clearRect(0, 0, downCanvas.width, downCanvas.height);
+		let prevCoords = [];
+		// color
+		const downGradient = downCtx.createLinearGradient(0, 0, 0, downCanvas.height);
+		downGradient.addColorStop(0, '#33ff00');
+		downGradient.addColorStop(1, '#33ffff');
+		downCtx.strokeStyle = downGradient;
+		downCtx.fillStyle = downGradient;
+		downCtx.lineWidth = 3;
+		const downMargin = 4;
+		downloads.forEach(downResult => {
+			const speed = downloadspeed(downResult);
+			if (speed === 0) {
+				prevCoords = [];
+				return;
+			}
+			// dot
+			const x = timeToDownPx(downResult[1]);
+			const y = (1 - speed / maxDown) * (downCanvas.height - 2 * downMargin) + downMargin;
+			downCtx.beginPath();
+			downCtx.arc(x, y, 3, 0, 2 * Math.PI);
+			downCtx.fill();
+			if (prevCoords.length === 2) {
+				// line
+				downCtx.beginPath();
+				downCtx.moveTo(...prevCoords);
+				downCtx.lineTo(x, y);
+				downCtx.stroke();
+			}
+			prevCoords = [x, y];
+		});
+		// text
+		downCtx.strokeStyle = 'white';
+		downCtx.fillStyle = 'white';
+		downCtx.lineWidth = 1;
+		downCtx.textBaseline = 'top';
+		downCtx.font = '20px monospace';
+		downCtx.beginPath();
+		downCtx.moveTo(0, downCanvas.height - downMargin);
+		downCtx.lineTo(downCanvas.width, downCanvas.height - downMargin);
+		downCtx.moveTo(0, downMargin);
+		downCtx.lineTo(downCanvas.width, downMargin);
+		downCtx.stroke();
+		downCtx.fillText(maxDown + ' Mb/s', 0, downMargin * 2);
+
+		requestAnimationFrame(draw);
+	}
+	requestAnimationFrame(draw);
+</script>
+</html>
