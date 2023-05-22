@@ -4,6 +4,7 @@
 	<meta charset="UTF-8">
 	<meta http-equiv="X-UA-Compatible" content="IE=edge">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<meta name="apple-mobile-web-app-capable" content="yes" />
 	<title>Ping</title>
 	<style>
 		body {
@@ -11,7 +12,7 @@
 			color: white;
 		}
 		p {
-			margin: 0.2rem 0;
+			margin: 0.1rem 0;
 		}
 		.controls {
 			display: flex;
@@ -186,16 +187,24 @@
 	download();
 
 	const pingCanvas = document.getElementById('pingCanvas');
-	pingCanvas.width = document.body.clientWidth;
-	pingCanvas.height = 40;
-	window.onresize = () => pingCanvas.width = document.body.clientWidth;
 	const pingCtx = pingCanvas.getContext('2d');
 	pingCtx.strokeStyle = 'white';
-
+	const pingHeight = 30;
+	const downHeight = 120;
+	
 	const downCanvas = document.getElementById('downCanvas');
-	downCanvas.width = document.body.clientWidth;
-	downCanvas.height = 150;
-	window.onresize = () => downCanvas.width = document.body.clientWidth;
+	function onResize() {
+		pingCanvas.width = document.body.clientWidth * window.devicePixelRatio;
+		pingCanvas.style.width = document.body.clientWidth + 'px';
+		pingCanvas.height = pingHeight * window.devicePixelRatio;
+		pingCanvas.style.height = pingHeight + 'px';
+		downCanvas.width = document.body.clientWidth * window.devicePixelRatio;
+		downCanvas.style.width = document.body.clientWidth + 'px';
+		downCanvas.height = downHeight * window.devicePixelRatio;
+		downCanvas.style.height = downHeight + 'px';
+	}
+	window.onresize = onResize;
+	onResize();
 	const downCtx = downCanvas.getContext('2d');
 
 	function timeToPingPx(timestamp) {
@@ -251,7 +260,7 @@
 		downCtx.fillStyle = 'white';
 		downCtx.lineWidth = 1;
 		downCtx.textBaseline = 'top';
-		downCtx.font = '20px monospace';
+		downCtx.font = '28px monospace';
 		downCtx.beginPath();
 		downCtx.moveTo(0, downCanvas.height - downMargin);
 		downCtx.lineTo(downCanvas.width, downCanvas.height - downMargin);
